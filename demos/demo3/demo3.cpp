@@ -22,22 +22,14 @@ int main(int argc, char *argv[])
 {
     QCoreApplication a(argc, argv);
 
-    // First create the SmtpClient object and set the user and the password.
-
-    SmtpClient smtp("smtp.gmail.com", 465, SmtpClient::SslConnection);
-
-    smtp.setUser("your_email@host.com");
-    smtp.setPassword("your_password");
-
     // Create a MimeMessage
-
     MimeMessage message;
 
     EmailAddress sender("your_email_address@host.com", "Your Name");
-    message.setSender(&sender);
+    message.setSender(sender);
 
     EmailAddress to("recipient@host.com", "Recipient's Name");
-    message.addRecipient(&to);
+    message.addRecipient(to);
 
     message.setSubject("SmtpClient for Qt - Demo");
 
@@ -60,18 +52,22 @@ int main(int argc, char *argv[])
     message.addPart(&document);
 
     // Now we can send the mail
+    SmtpClient smtp("smtp.gmail.com", 465, SmtpClient::SslConnection);
 
-    if (!smtp.connectToHost()) {
+    smtp.connectToHost();
+    if (!smtp.waitForReadyConnected()) {
         qDebug() << "Failed to connect to host!" << endl;
         return -1;
     }
 
-    if (!smtp.login()) {
+    smtp.login("your_email_address@host.com", "your_password");
+    if (!smtp.waitForAuthenticated()) {
         qDebug() << "Failed to login!" << endl;
         return -2;
     }
 
-    if (!smtp.sendMail(message)) {
+    smtp.sendMail(message);
+    if (!smtp.waitForMailSent()) {
         qDebug() << "Failed to send mail!" << endl;
         return -3;
     }

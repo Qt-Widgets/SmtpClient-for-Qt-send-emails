@@ -18,17 +18,23 @@
 
 #include "mimemessage.h"
 
+#include <QDebug>
 #include <QDateTime>
+#include <QBuffer>
 #include "quotedprintable.h"
 #include <typeinfo>
 
-/* [1] Constructors and Destructors */
+/*!
+    \class MimeMessage
+    \brief Represents a message where content, recipients and sender are added.
+*/
+
 MimeMessage::MimeMessage(bool createAutoMimeContent) :
-    replyTo(Q_NULLPTR),
+    content(Q_NULLPTR),
     hEncoding(MimePart::_8Bit)
 {
     if (createAutoMimeContent)
-        this->content = new MimeMultiPart();
+        content = new MimeMultiPart();
 
     autoMimeContentCreated = createAutoMimeContent;
 }
@@ -36,10 +42,7 @@ MimeMessage::MimeMessage(bool createAutoMimeContent) :
 MimeMessage::~MimeMessage()
 {
     if (this->autoMimeContentCreated)
-    {
-      this->autoMimeContentCreated = false;
-      delete (this->content);
-    }
+        delete content;
 }
 
 /* [1] --- */
@@ -50,25 +53,24 @@ MimePart& MimeMessage::getContent() {
     return *content;
 }
 
-void MimeMessage::setContent(MimePart *content) {
-    if (this->autoMimeContentCreated)
-    {
-      this->autoMimeContentCreated = false;
-      delete (this->content);
+void MimeMessage::setContent(MimePart* content) {
+    if (this->autoMimeContentCreated) {
+        this->autoMimeContentCreated = false;
+        delete this->content;
     }
     this->content = content;
 }
 
-void MimeMessage::setReplyTo(EmailAddress* rto) {
+void MimeMessage::setReplyTo(const EmailAddress &rto) {
     replyTo = rto;
 }
 
-void MimeMessage::setSender(EmailAddress* e)
+void MimeMessage::setSender(const EmailAddress &sender)
 {
-    this->sender = e;
+    this->sender = sender;
 }
 
-void MimeMessage::addRecipient(EmailAddress* rcpt, RecipientType type)
+void MimeMessage::addRecipient(const EmailAddress &rcpt, RecipientType type)
 {
     switch (type)
     {
@@ -84,42 +86,42 @@ void MimeMessage::addRecipient(EmailAddress* rcpt, RecipientType type)
     }
 }
 
-void MimeMessage::addTo(EmailAddress* rcpt) {
+void MimeMessage::addTo(const EmailAddress &rcpt) {
     this->recipientsTo << rcpt;
 }
 
-void MimeMessage::addCc(EmailAddress* rcpt) {
+void MimeMessage::addCc(const EmailAddress &rcpt) {
     this->recipientsCc << rcpt;
 }
 
-void MimeMessage::addBcc(EmailAddress* rcpt) {
+void MimeMessage::addBcc(const EmailAddress &rcpt) {
     this->recipientsBcc << rcpt;
 }
 
-void MimeMessage::setSubject(const QString & subject)
-{
+void MimeMessage::addCustomHeader(const QString &header) {
+    this->customHeaders << header;
+}
+
+void MimeMessage::setSubject(const QString & subject) {
     this->subject = subject;
 }
 
-void MimeMessage::addPart(MimePart *part)
-{
-    if (typeid(*content) == typeid(MimeMultiPart)) {
-        ((MimeMultiPart*) content)->addPart(part);
+void MimeMessage::addPart(MimePart* part) {
+    auto multipart = dynamic_cast<MimeMultiPart*>( content );
+    if (multipart) {
+        multipart->addPart(part);
     };
 }
 
-void MimeMessage::setHeaderEncoding(MimePart::Encoding hEnc)
-{
+void MimeMessage::setHeaderEncoding(MimePart::Encoding hEnc) {
     this->hEncoding = hEnc;
 }
 
-const EmailAddress & MimeMessage::getSender() const
-{
-    return *sender;
+EmailAddress MimeMessage::getSender() const {
+    return sender;
 }
 
-const QList<EmailAddress*> & MimeMessage::getRecipients(RecipientType type) const
-{
+const QList<EmailAddress> & MimeMessage::getRecipients(RecipientType type) const {
     switch (type)
     {
     default:
@@ -132,24 +134,18 @@ const QList<EmailAddress*> & MimeMessage::getRecipients(RecipientType type) cons
     }
 }
 
-const EmailAddress* MimeMessage::getReplyTo() const {
-    return replyTo;
-}
-
-const QString & MimeMessage::getSubject() const
-{
+QString MimeMessage::getSubject() const {
     return subject;
 }
 
-const QList<MimePart*> & MimeMessage::getParts() const
-{
-    if (typeid(*content) == typeid(MimeMultiPart)) {
-        return ((MimeMultiPart*) content)->getParts();
-    }
-    else {
-        QList<MimePart*> *res = new QList<MimePart*>();
-        res->append(content);
-        return *res;
+const QList<MimePart*> MimeMessage::getParts() const {
+    auto multipart = dynamic_cast<MimeMultiPart*>( content );
+    if (multipart) {
+        return multipart->getParts();
+    } else {
+        QList<MimePart*> res;
+        res.append(content);
+        return res;
     }
 }
 
@@ -158,131 +154,110 @@ const QList<MimePart*> & MimeMessage::getParts() const
 
 /* [3] Public Methods */
 
-QString MimeMessage::toString()
-{
-    QString mime;
+QString MimeMessage::toString() const {
+    QBuffer out;
+    out.open(QIODevice::WriteOnly);
+    writeToDevice(out);
+    return QString(out.buffer());
+}
 
+QByteArray MimeMessage::formatAddress(const EmailAddress &address, MimePart::Encoding encoding) {
+    QByteArray result;
+    result.append(format(address.getName(), encoding));
+    result.append(" <" + address.getAddress() + ">");
+    return result;
+}
+
+QByteArray MimeMessage::format(const QString &text, MimePart::Encoding encoding) {
+    QByteArray result;
+    if (!text.isEmpty())
+    {
+        switch (encoding)
+        {
+        case MimePart::Base64:
+            result.append(" =?utf-8?B?" + text.toUtf8().toBase64() + "?=");
+            break;
+        case MimePart::QuotedPrintable:
+            result.append(" =?utf-8?Q?" + QuotedPrintable::encode(text.toUtf8()).toLocal8Bit().replace(' ', "_").replace(':',"=3A") + "?=");
+            break;
+        default:
+            result.append(" ").append(text.toLocal8Bit());
+        }
+    }
+    return result;
+}
+
+void MimeMessage::writeToDevice(QIODevice &out) const {
     /* =========== MIME HEADER ============ */
 
     /* ---------- Sender / From ----------- */
-    mime = "From:";
-    if (sender->getName() != "")
-    {
-        switch (hEncoding)
-        {
-        case MimePart::Base64:
-            mime += " =?utf-8?B?" + QByteArray().append(sender->getName()).toBase64() + "?=";
-            break;
-        case MimePart::QuotedPrintable:
-            mime += " =?utf-8?Q?" + QuotedPrintable::encode(QByteArray().append(sender->getName())).replace(' ', "_").replace(':',"=3A") + "?=";
-            break;
-        default:
-            mime += " " + sender->getName();
-        }
-    }
-    mime += " <" + sender->getAddress() + ">\r\n";
+    QByteArray header;
+    header.append("From:" + formatAddress(sender, hEncoding) + "\r\n");
     /* ---------------------------------- */
 
-
     /* ------- Recipients / To ---------- */
-    mime += "To:";
-    QList<EmailAddress*>::iterator it;  int i;
-    for (i = 0, it = recipientsTo.begin(); it != recipientsTo.end(); ++it, ++i)
+    header.append("To:");
+    for (int i = 0; i<recipientsTo.size(); ++i)
     {
-        if (i != 0) { mime += ","; }
-
-        if ((*it)->getName() != "")
-        {
-            switch (hEncoding)
-            {
-            case MimePart::Base64:
-                mime += " =?utf-8?B?" + QByteArray().append((*it)->getName()).toBase64() + "?=";
-                break;
-            case MimePart::QuotedPrintable:
-                mime += " =?utf-8?Q?" + QuotedPrintable::encode(QByteArray().append((*it)->getName())).replace(' ', "_").replace(':',"=3A") + "?=";
-                break;
-            default:
-                mime += " " + (*it)->getName();
-            }
-        }
-        mime += " <" + (*it)->getAddress() + ">";
+        if (i != 0) { header.append(","); }
+        header.append(formatAddress(recipientsTo.at(i), hEncoding));
     }
-    mime += "\r\n";
+    header.append("\r\n");
     /* ---------------------------------- */
 
     /* ------- Recipients / Cc ---------- */
     if (recipientsCc.size() != 0) {
-        mime += "Cc:";
+        header.append("Cc:");
     }
-    for (i = 0, it = recipientsCc.begin(); it != recipientsCc.end(); ++it, ++i)
+    for (int i = 0; i<recipientsCc.size(); ++i)
     {
-        if (i != 0) { mime += ","; }
-
-        if ((*it)->getName() != "")
-        {
-            switch (hEncoding)
-            {
-            case MimePart::Base64:
-                mime += " =?utf-8?B?" + QByteArray().append((*it)->getName()).toBase64() + "?=";
-                break;
-            case MimePart::QuotedPrintable:
-                mime += " =?utf-8?Q?" + QuotedPrintable::encode(QByteArray().append((*it)->getName())).replace(' ', "_").replace(':',"=3A") + "?=";
-                break;
-            default:
-                mime += " " + (*it)->getName();
-            }
-        }
-        mime += " <" + (*it)->getAddress() + ">";
+        if (i != 0) { header.append(","); }
+        header.append(formatAddress(recipientsCc.at(i), hEncoding));
     }
     if (recipientsCc.size() != 0) {
-        mime += "\r\n";
+        header.append("\r\n");
     }
     /* ---------------------------------- */
 
     /* ------------ Subject ------------- */
-    mime += "Subject: ";
+    header.append("Subject: ");
+    header.append(format(subject, hEncoding));
+    header.append("\r\n");
+    /* ---------------------------------- */
 
-
-    switch (hEncoding)
-    {
-    case MimePart::Base64:
-        mime += "=?utf-8?B?" + QByteArray().append(subject).toBase64() + "?=";
-        break;
-    case MimePart::QuotedPrintable:
-        mime += "=?utf-8?Q?" + QuotedPrintable::encode(QByteArray().append(subject)).replace(' ', "_").replace(':',"=3A") + "?=";
-        break;
-    default:
-        mime += subject;
+    foreach (QString hdr, customHeaders) {
+        header.append(hdr.toLocal8Bit());
+        header.append("\r\n");
     }
-    mime += "\r\n";
     /* ---------------------------------- */
 
     /* ---------- Reply-To -------------- */
-    if (replyTo) {
-        mime += "Reply-To: ";
-        if (replyTo->getName() != "")
+    if (!replyTo.isNull()) {
+        header.append("Reply-To: ");
+        if (!replyTo.getName().isEmpty())
         {
             switch (hEncoding)
             {
             case MimePart::Base64:
-                mime += " =?utf-8?B?" + QByteArray().append(replyTo->getName()).toBase64() + "?=";
+                header.append(" =?utf-8?B?" + QByteArray().append(replyTo.getName()).toBase64() + "?=");
                 break;
             case MimePart::QuotedPrintable:
-                mime += " =?utf-8?Q?" + QuotedPrintable::encode(QByteArray().append(replyTo->getName())).replace(' ', "_").replace(':',"=3A") + "?=";
+                header.append(" =?utf-8?Q?" + QuotedPrintable::encode(QByteArray().append(replyTo.getName())).replace(' ', "_").replace(':',"=3A") + "?=");
                 break;
             default:
-                mime += " " + replyTo->getName();
+                header.append(" " + replyTo.getName());
             }
         }
-        mime += " <" + replyTo->getAddress() + ">\r\n";
+        header.append(" <" + replyTo.getAddress() + ">\r\n");
     }
 
     /* ---------------------------------- */
 
-    mime += "MIME-Version: 1.0\r\n";
+    header.append("MIME-Version: 1.0\r\n");
 
-    mime += content->toString();
-    return mime;
+    out.write(header);
+    if( content )
+        content->writeToDevice(out);
 }
 
 /* [3] --- */

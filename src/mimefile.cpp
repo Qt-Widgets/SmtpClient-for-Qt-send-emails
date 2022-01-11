@@ -54,16 +54,13 @@ MimeFile::~MimeFile()
 
 /* [3] Protected methods */
 
-void MimeFile::prepare()
-{
-  if (this->file)
-  {
-    file->open(QIODevice::ReadOnly);
-    this->content = file->readAll();
+
+void MimeFile::writeContent(QIODevice &device) const {
+    file->open(QIODevice::ReadOnly);    
+    const QByteArray &fileContent = file->readAll();
     file->close();
-  }
-    /* !!! IMPORTANT !!!! */
-    MimePart::prepare();
+
+    MimePart::writeContent(device, fileContent);
 }
 
 /* [3] --- */

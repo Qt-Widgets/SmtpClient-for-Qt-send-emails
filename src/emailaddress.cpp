@@ -18,43 +18,55 @@
 
 #include "emailaddress.h"
 
-/* [1] Constructors and Destructors */
+/*!
+    \class EmailAddress
+    \brief Represent an e-mail address and display name.
+
+    EmailAddress is used to specify both sender and reicipents of
+    e-mail messages.
+    \sa SmtpClient
+*/
 
 EmailAddress::EmailAddress(const QString & address, const QString & name)
-{
-    this->address = address;
-    this->name = name;
-}
-
-EmailAddress::~EmailAddress()
+    : address(address), name(name)
 {
 }
 
-/* [1] --- */
-
-
-/* [2] Getters and Setters */
-
-void EmailAddress::setName(const QString & name)
+EmailAddress::EmailAddress(const EmailAddress &other)
+    : address(other.address), name(other.name)
 {
-    this->name = name;
-
 }
 
-void EmailAddress::setAddress(const QString & address)
+EmailAddress::EmailAddress(EmailAddress&& other)
+    : address(std::move(other.address)), name(std::move(other.name))
 {
-    this->address = address;
 }
 
-const QString & EmailAddress::getName() const
+/*!
+    Returns the user friendly name for this address. Usually this is the 
+    person's name.
+*/
+QString EmailAddress::getName() const
 {
     return name;
 }
 
-const QString & EmailAddress::getAddress() const
+/*!
+    Returns the e-mail address in the form user@domain
+*/
+QString EmailAddress::getAddress() const
 {
     return address;
 }
 
-/* [2] --- */
+EmailAddress& EmailAddress::operator=(const EmailAddress& other) {
+    address = other.address;
+    name = other.name;
+    return *this;
+}
 
+EmailAddress& EmailAddress::operator=(EmailAddress&& other) {
+    address = std::move(other.address);
+    name = std::move(other.name);
+    return *this;
+}

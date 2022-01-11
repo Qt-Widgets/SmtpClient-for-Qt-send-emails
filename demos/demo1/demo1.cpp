@@ -14,21 +14,15 @@ int main(int argc, char *argv[])
 
     SmtpClient smtp("smtp.gmail.com", 465, SmtpClient::SslConnection);
 
-    // We need to set the username (your email address) and password
-    // for smtp authentification.
-
-    smtp.setUser("your_email_address@host.com");
-    smtp.setPassword("your_password");
-
     // Now we create a MimeMessage object. This is the email.
 
     MimeMessage message;
 
     EmailAddress sender("your_email_address@host.com", "Your Name");
-    message.setSender(&sender);
+    message.setSender(sender);
 
     EmailAddress to("recipient@host.com", "Recipient's Name");
-    message.addRecipient(&to);
+    message.addRecipient(to);
 
     message.setSubject("SmtpClient for Qt - Demo");
 
@@ -44,21 +38,23 @@ int main(int argc, char *argv[])
     message.addPart(&text);
 
     // Now we can send the mail
-
-    if (!smtp.connectToHost()) {
+    smtp.connectToHost();
+    if (!smtp.waitForReadyConnected()) {
         qDebug() << "Failed to connect to host!" << endl;
         return -1;
     }
 
-    if (!smtp.login()) {
-        qDebug() << "Failed to login!" << endl;
-        return -2;
-    }
+    // We need to set the username (your email address) and password
+    // for smtp authentication.
 
-    if (!smtp.sendMail(message)) {
+    smtp.login("your_email_address@host.com", "your_password");
+    smtp.sendMail(message);
+
+    if (!smtp.waitForMailSent()) {
         qDebug() << "Failed to send mail!" << endl;
         return -3;
     }
+    
 
     smtp.quit();
 
